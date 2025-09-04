@@ -1,6 +1,6 @@
 name: Build
 
-'on': push: branches: - main pull_request:
+on: push: branches: - main pull_request:
 
 jobs: build: runs-on: ubuntu-latest
 
@@ -16,7 +16,7 @@ steps:
   - name: Install Android SDK cmdline-tools
     run: |
       sudo mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-      sdkmanager --sdk_root=$ANDROID_SDK_ROOT "cmdline-tools;latest" "platform-tools" "platforms;android-33" "build-tools;36.0.0"
+      yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT "cmdline-tools;latest" "platform-tools" "platforms;android-33" "build-tools;36.0.0"
 
   - name: Accept Android SDK licenses
     run: |
