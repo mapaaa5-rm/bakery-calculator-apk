@@ -1,6 +1,6 @@
 [app]
 
-# Назва апки
+# Назва папки
 title = BakeryCalculator
 package.name = BakeryCalculator
 package.domain = org.roman
