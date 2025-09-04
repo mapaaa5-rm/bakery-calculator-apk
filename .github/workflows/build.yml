@@ -26,6 +26,9 @@ jobs:
           pip install buildozer==1.5.0 cython==0.29.34
 
       - name: Build APK
+        # --- ДОДАНО: Автоматично приймати ліцензійні угоди Android ---
+        env:
+          ANDROID_ACCEPT_LICENSES: "true"
         run: |
           buildozer -v android debug
 
@@ -34,3 +37,4 @@ jobs:
         with:
           name: BakeryCalculator
           path: bin/*.apk
+          
