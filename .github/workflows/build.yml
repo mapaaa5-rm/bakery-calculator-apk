@@ -1,18 +1,43 @@
-- name: Prepare Android SDK
-        run: |
-          mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools
-          curl -fo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools
-          mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
-          rm tools.zip
+name: Build
 
-      - name: Install Android SDK components
-        run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
-            "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;34.0.0"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-      - name: Accept licenses
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      # --- ЦЕЙ КРОК ПОВНІСТЮ ЗАМІНЕНО ---
+      - name: Download and Install Android SDK
         run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses
+          # Створюємо необхідні папки
+          sudo mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          
+          # Завантажуємо базові інструменти командного рядка
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          
+          # Розпаковуємо їх у тимчасову папку та переміщуємо у правильну директорію 'latest'
+          sudo unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          sudo mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          
+          # Тепер, коли sdkmanager існує, приймаємо ліцензії та встановлюємо решту
+          echo "y" | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+          sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;34.0.0"
+
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
+
