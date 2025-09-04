@@ -25,9 +25,14 @@ jobs:
           pip install buildozer==1.5.0 cython==0.29.34
 
       - name: Build APK
+        # --- МЕТОД 1: Глобальний дозвіл через змінну середовища ---
+        env:
+          ANDROID_ACCEPT_LICENSES: "true"
         run: |
-          # --- ВИПРАВЛЕНО: Приймаємо ліцензії і ВІДРАЗУ Ж запускаємо збірку ---
+          # --- МЕТОД 2: Пряма команда для прийняття ліцензій ---
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          
+          # Запуск збірки
           buildozer -v android debug
 
       - name: Upload APK
