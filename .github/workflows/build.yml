@@ -16,20 +16,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+          # --- ВИПРАВЛЕНО ---
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y python3-pip openjdk-17-jdk unzip
-          pip install buildozer cython virtualenv
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev
+          pip install buildozer==1.5.0 cython==0.29.34
 
       - name: Build APK
         run: |
-          buildozer android debug
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: BakeryCalculator
-          path: bin/*.apk          path: bin/*.apk
+          path: bin/*.apk
