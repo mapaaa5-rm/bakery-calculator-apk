@@ -32,6 +32,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BakeryCalculator
-          path: bin/*.apk        with:
-          name: bakery-calculator-apk
-          path: bin/*.apk
+          path: bin/*.apk          path: bin/*.apk
