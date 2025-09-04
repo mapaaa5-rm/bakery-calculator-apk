@@ -22,7 +22,7 @@ requirements = python3,kivy==2.1.0
 android.api = 34
 android.minapi = 21
 
-# --- ДОДАНО: Прямо вказуємо версії інструментів для збірки ---
+# Версії інструментів для збірки
 android.build_tools = 34.0.0
 android.ndk = 25b
 
@@ -46,9 +46,3 @@ orientation = portrait
 log_level = 2
 
 warn_on_root = 1
-# Орієнтація
-orientation = portrait
-
-# Якщо треба доступ до файлів/інтернету, можна додати:
-# android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE
-
