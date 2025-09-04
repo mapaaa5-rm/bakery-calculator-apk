@@ -7,19 +7,19 @@ package.domain = org.roman
 
 # Файл з твоїм кодом
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
+source.include_exts = py,png,jpg,kv,atlas,spec
 
-# Основний файл програми
-main.py = main.py
+# --- ВИДАЛЕНО НЕПРАВИЛЬНИЙ РЯДОК ---
+# main.py = main.py
 
-# Іконка (можна замінити на свою)
+# Іконка (переконайтесь, що файл data/icon.png існує)
 icon.filename = %(source.dir)s/data/icon.png
 
 # Версія
 version = 1.0
 
-# Бібліотеки
-requirements = python3,kivy
+# --- ПОКРАЩЕНО: Зафіксовано версію Kivy ---
+requirements = python3,kivy==2.1.0
 
 # Min/Target SDK
 android.api = 34
@@ -34,6 +34,18 @@ fullscreen = 0
 # Опис (необов’язково)
 description = Простий калькулятор для пекарні
 
+# Орієнтація
+orientation = portrait
+
+# Якщо треба доступ до файлів/інтернету, можна додати:
+# android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE
+
+[buildozer]
+
+# Увімкни щоб показувало лог під час збірки
+log_level = 2
+
+warn_on_root = 1
 # Орієнтація
 orientation = portrait
 
