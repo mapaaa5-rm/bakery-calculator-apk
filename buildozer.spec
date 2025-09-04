@@ -52,9 +52,3 @@ orientation = portrait
 # Якщо треба доступ до файлів/інтернету, можна додати:
 # android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE
 
-[buildozer]
-
-# Увімкни щоб показувало лог під час збірки
-log_level = 2
-
-warn_on_root = 1
