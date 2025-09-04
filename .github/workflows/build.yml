@@ -1,34 +1,18 @@
-name: Build
-
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Install Android SDK cmdline-tools
+- name: Prepare Android SDK
         run: |
-          # Створюємо необхідні папки для SDK
-          sudo mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          
-          # Завантажуємо та приймаємо ліцензії для потрібних компонентів
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT "cmdline-tools;latest" "platform-tools" "platforms;android-33" "build-tools;34.0.0"
+          mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools
+          curl -fo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools
+          mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
+          rm tools.zip
 
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug
+      - name: Install Android SDK components
+        run: |
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;34.0.0"
 
+      - name: Accept licenses
+        run: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses
