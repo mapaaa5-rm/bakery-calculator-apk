@@ -1,45 +1,36 @@
-[app]
+name: Build APK
 
-# Назва апки
-title = BakeryCalculator
-package.name = BakeryCalculator
-package.domain = org.roman
+on:
+  push:
+    branches:
+      - main
 
-# Файл з твоїм кодом
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,spec
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-# Іконка (переконайтесь, що файл data/icon.png існує)
-icon.filename = %(source.dir)s/data/icon.png
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-# Версія
-version = 1.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-# Бібліотеки
-requirements = python3,kivy==2.1.0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses-dev cmake libffi-dev
+          
+          pip install buildozer==1.5.0 cython==0.29.34
 
-# Min/Target SDK
-android.api = 34
-android.minapi = 21
+      - name: Build APK
+        run: |
+          buildozer -v android debug
 
-# Arch підтримка
-android.archs = arm64-v8a, armeabi-v7a
-
-# Вимкнути fullscreen якщо не треба
-fullscreen = 0
-
-# Опис (необов’язково)
-description = Простий калькулятор для пекарні
-
-# Орієнтація
-orientation = portrait
-
-# android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE
-
-# --- ЦЕ ЄДИНА ПРАВИЛЬНА СЕКЦІЯ BUILDOZER ---
-[buildozer]
-
-# Увімкни щоб показувало лог під час збірки
-log_level = 2
-
-warn_on_root = 1
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BakeryCalculator
+          path: bin/*.apk
