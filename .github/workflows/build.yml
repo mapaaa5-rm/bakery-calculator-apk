@@ -2,7 +2,9 @@ name: Build APK with Buildozer - Fixed
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -12,105 +14,53 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: Install and update build tools
+    - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
-          zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev make gcc g++ \
-          autoconf-archive libtool-bin
-        
-        # Оновлюємо autotools до останніх версій
-        pip install buildozer==1.5.0 cython==0.29.34
+        sudo apt-get install -y \
+            git \
+            openjdk-17-jdk \
+            unzip \
+            zlib1g-dev \
+            libncurses5-dev \
+            libgdbm-dev \
+            libnss3-dev \
+            libssl-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            libffi-dev \
+            libbz2-dev
 
-    - name: Setup Android environment
+    - name: Install Buildozer
       run: |
-        echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+        pip install --upgrade pip
+        pip install buildozer
+        pip install cython
 
-    - name: Fix Android paths
-      run: |
-        sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
-        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
-        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager
-        echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
-
-    - name: Accept Android licenses
+    - name: Set up Android SDK and NDK
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         yes | sdkmanager --licenses
+        sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        sdkmanager --install "ndk;25.2.9519653"
+        echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "ANDROIDNDK=/usr/local/lib/android/sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/25.2.9519653" >> $GITHUB_ENV
 
-    - name: Install Android components
+    - name: Build APK with Buildozer
       run: |
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
-        # Встановлюємо стабільну версію NDK
-        sdkmanager "ndk;23.2.8568313"
-
-    - name: Configure Buildozer with Java 17 compatibility
-      run: |
-        if [ ! -f buildozer.spec ]; then
-          buildozer init
-        fi
-        
-        # Оновлюємо для використання стабільної NDK
-        sed -i 's|^android.ndk =.*|android.ndk = 23.2.8568313|' buildozer.spec
-        sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
-        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/23.2.8568313|' buildozer.spec
-        
-        # Додаємо Java 17 сумісність
-        if ! grep -q "android.gradle_source_compatibility" buildozer.spec; then
-          echo "android.gradle_source_compatibility = 17" >> buildozer.spec
-        fi
-        if ! grep -q "android.gradle_target_compatibility" buildozer.spec; then
-          echo "android.gradle_target_compatibility = 17" >> buildozer.spec
-        fi
-        
-        # Додаємо стабільні налаштування
-        echo "android.skip_update = True" >> buildozer.spec
-        echo "p4a.skip_ant = True" >> buildozer.spec
-        echo "p4a.branch = master" >> buildozer.spec
-
-        # Перевіряємо фінальну конфігурацію
-        echo "=== Final buildozer.spec content ==="
-        grep -E "(android.(sdk|ndk|gradle)|skip_)" buildozer.spec || true
-
-    - name: Build APK with fixes
-      env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/23.2.8568313
-        # Фікси для libffi
-        CFLAGS: "-Wno-error=implicit-function-declaration"
-        LDFLAGS: "-L/usr/lib/x86_64-linux-gnu"
-      run: |
-        echo "=== Building with Java 17 compatibility ==="
-        buildozer -v android debug 2>&1 | tee build.log
-        
-        if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK successfully built!"
-          ls -la bin/
-        else
-          echo "❌ APK build failed. Check build.log for details."
-          exit 1
-        fi
+        buildozer -v android debug
+        ls -la bin/
 
     - name: Upload APK artifact
-      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: BakeryCalculator-APK
+        name: bakery-calculator-apk
         path: bin/*.apk
-
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Build-Log
-        path: build.log
