@@ -24,11 +24,11 @@ android.minapi = 21
 
 # Версії інструментів для збірки
 android.build_tools = 34.0.0
-android.ndk = 28c
+android.ndk = 28.2.13676358
 
 # Шляхи до SDK та NDK
 android.sdk_path = /usr/local/lib/android/sdk
-android.ndk_path = /usr/local/lib/android/sdk/ndk/28c
+android.ndk_path = /usr/local/lib/android/sdk/ndk/28.2.13676358
 
 # Arch підтримка
 android.archs = arm64-v8a, armeabi-v7a
