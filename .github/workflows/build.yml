@@ -24,7 +24,7 @@ jobs:
           zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev make gcc g++ \
           autoconf-archive libtool-bin
         
-        # Оновлюємо autotools
+        # Оновлюємо autotools до останніх версій
         pip install buildozer==1.5.0 cython==0.29.34
 
     - name: Setup Android environment
@@ -47,57 +47,70 @@ jobs:
         touch ~/.android/repositories.cfg
         yes | sdkmanager --licenses
 
-    - name: Install Android components with recommended NDK
+    - name: Install Android components
       run: |
         sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
-        # Спробуємо версію 25b (рекомендовану)
-        sdkmanager "ndk;25.1.8937393"
-        # І версію 23c для резерву
+        # Встановлюємо стабільну версію NDK
         sdkmanager "ndk;23.2.8568313"
 
-    - name: Configure Buildozer for stability
+    - name: Configure Buildozer with Java 17 compatibility
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
-        # Оновлюємо для використання рекомендованої NDK
-        sed -i 's|^android.ndk =.*|android.ndk = 25.1.8937393|' buildozer.spec
+        # Оновлюємо для використання стабільної NDK
+        sed -i 's|^android.ndk =.*|android.ndk = 23.2.8568313|' buildozer.spec
         sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
-        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393|' buildozer.spec
+        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/23.2.8568313|' buildozer.spec
+        
+        # Додаємо Java 17 сумісність
+        if ! grep -q "android.gradle_source_compatibility" buildozer.spec; then
+          echo "android.gradle_source_compatibility = 17" >> buildozer.spec
+        fi
+        if ! grep -q "android.gradle_target_compatibility" buildozer.spec; then
+          echo "android.gradle_target_compatibility = 17" >> buildozer.spec
+        fi
         
         # Додаємо стабільні налаштування
         echo "android.skip_update = True" >> buildozer.spec
         echo "p4a.skip_ant = True" >> buildozer.spec
         echo "p4a.branch = master" >> buildozer.spec
 
-    - name: Build APK with libffi workaround
+        # Перевіряємо фінальну конфігурацію
+        echo "=== Final buildozer.spec content ==="
+        grep -E "(android.(sdk|ndk|gradle)|skip_)" buildozer.spec || true
+
+    - name: Build APK with fixes
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.1.8937393
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/23.2.8568313
+        # Фікси для libffi
         CFLAGS: "-Wno-error=implicit-function-declaration"
         LDFLAGS: "-L/usr/lib/x86_64-linux-gnu"
       run: |
+        echo "=== Building with Java 17 compatibility ==="
         buildozer -v android debug 2>&1 | tee build.log
         
         if ls bin/*.apk 1> /dev/null 2>&1; then
           echo "✅ APK successfully built!"
           ls -la bin/
         else
-          echo "❌ APK build failed"
-          # Спробуємо з версією 23c
-          sed -i 's|^android.ndk =.*|android.ndk = 23.2.8568313|' buildozer.spec
-          sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/23.2.8568313|' buildozer.spec
-          export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/23.2.8568313
-          buildozer -v android debug 2>&1 | tee build_attempt2.log
+          echo "❌ APK build failed. Check build.log for details."
+          exit 1
         fi
 
-    - name: Upload artifacts
+    - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: Build-Artifacts
-        path: |
-          bin/*.apk
-          build.log
-          build_attempt2.log
+        name: BakeryCalculator-APK
+        path: bin/*.apk
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Log
+        path: build.log
