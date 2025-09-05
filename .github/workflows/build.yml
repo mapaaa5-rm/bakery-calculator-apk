@@ -45,9 +45,10 @@ jobs:
         # Clean up
         rm -rf cmdline-tools.zip cmdline-tools
         
-        # Set environment variables
-        echo "ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "PATH=~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+        # Set environment variables with FULL PATH (not ~)
+        echo "ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+        echo "ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+        echo "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
     - name: Accept Android licenses
       run: |
@@ -55,17 +56,17 @@ jobs:
         touch ~/.android/repositories.cfg
         
         # Accept licenses
-        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=~/.buildozer/android/platform/android-sdk --licenses || echo "License acceptance completed"
+        yes | /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk --licenses || echo "License acceptance completed"
 
     - name: Install Android SDK components
       run: |
-        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=~/.buildozer/android/platform/android-sdk "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
 
     - name: Build APK with Buildozer
       env:
-        # Force Buildozer to use our SDK location
-        ANDROID_SDK_ROOT: ~/.buildozer/android/platform/android-sdk
-        ANDROID_HOME: ~/.buildozer/android/platform/android-sdk
+        # Force Buildozer to use our SDK location with FULL PATHS
+        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
       run: |
         buildozer -v android debug
 
