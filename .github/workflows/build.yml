@@ -22,51 +22,39 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev automake make gcc g++
-        pip install buildozer cython==0.29.34
+        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev
+        pip install buildozer==1.5.0 cython==0.29.34
 
     - name: Setup Android SDK
       run: |
-        # Create Android SDK directory
-        mkdir -p ~/.buildozer/android/platform/android-sdk
-        
-        # Download command line tools
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip -d cmdline-tools
+        unzip -q cmdline-tools.zip
+        mkdir -p android-sdk/cmdline-tools/latest
+        mv cmdline-tools/* android-sdk/cmdline-tools/latest/
+        rm -rf cmdline-tools cmdline-tools.zip
         
-        # Move to correct location - create the expected structure
-        mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
-        mv cmdline-tools/cmdline-tools/* ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/
-        
-        # Create symlink for the old expected path that Buildozer looks for
-        mkdir -p ~/.buildozer/android/platform/android-sdk/tools
-        ln -sf ../cmdline-tools/latest/bin ~/.buildozer/android/platform/android-sdk/tools/bin
-        
-        # Clean up
-        rm -rf cmdline-tools.zip cmdline-tools
-        
-        # Set environment variables with FULL PATH (not ~)
-        echo "ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "ANDROID_SDK_ROOT=$PWD/android-sdk" >> $GITHUB_ENV
+        echo "$PWD/android-sdk/cmdline-tools/latest/bin:$PWD/android-sdk/platform-tools" >> $GITHUB_PATH
 
     - name: Accept Android licenses
       run: |
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        
-        # Accept licenses
-        yes | /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk --licenses || echo "License acceptance completed"
+        mkdir -p $ANDROID_SDK_ROOT/licenses
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_SDK_ROOT/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_ROOT/licenses/android-sdk-preview-license
 
     - name: Install Android SDK components
       run: |
-        /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" --sdk_root=$ANDROID_SDK_ROOT
+
+    - name: Create buildozer directory structure
+      run: |
+        mkdir -p ~/.buildozer/android/platform
+        rm -rf ~/.buildozer/android/platform/android-sdk
+        ln -sf ${{ github.workspace }}/android-sdk ~/.buildozer/android/platform/android-sdk
 
     - name: Build APK with Buildozer
-      env:
-        # Force Buildozer to use our SDK location with FULL PATHS
-        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
-        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
       run: |
         buildozer -v android debug
 
