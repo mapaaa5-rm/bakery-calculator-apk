@@ -22,53 +22,49 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev automake make gcc g++
+        sudo apt-get install -y git zip unzip python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev automake make gcc g++
         pip install buildozer==1.5.0 cython==0.29.34
 
-    - name: Setup Android SDK
+    - name: Setup Android environment
       run: |
-        # Create Android SDK directory
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk
+        # Використовуємо вже встановлений Android SDK в GitHub Actions
+        echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/25.1.8937393" >> $GITHUB_ENV
         
-        # Download command line tools
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip -d cmdline-tools
-        
-        # Move to correct location
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest
-        mv cmdline-tools/cmdline-tools/* /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/
-        
-        # Create expected directory structure for Buildozer
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk/tools/bin
-        cp /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager /home/runner/.buildozer/android/platform/android-sdk/tools/bin/
-        cp /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/avdmanager /home/runner/.buildozer/android/platform/android-sdk/tools/bin/
-        
-        # Clean up
-        rm -rf cmdline-tools.zip cmdline-tools
-        
-        # Set environment variables
-        echo "ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        # Додаємо необхідні шляхи до PATH
+        echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
 
     - name: Accept Android licenses
       run: |
-        mkdir -p /home/runner/.android
-        touch /home/runner/.android/repositories.cfg
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
         
-        # Manually create license files to avoid interactive prompts
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk/licenses
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+        # Автоматично приймаємо ліцензії
+        yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: Install Android SDK components
+    - name: Install required Android components
       run: |
-        /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        # Встановлюємо необхідні компоненти
+        /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+
+    - name: Configure Buildozer
+      run: |
+        # Створюємо базову конфігурацію Buildozer, якщо її немає
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+        fi
+        
+        # Оновлюємо шляхи в buildozer.spec (якщо потрібно)
+        sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
+        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393|' buildozer.spec
 
     - name: Build APK with Buildozer
       env:
-        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
-        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        ANDROID_HOME: /usr/local/lib/android/sdk
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.1.8937393
       run: |
         buildozer -v android debug
 
