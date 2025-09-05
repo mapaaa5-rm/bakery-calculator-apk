@@ -40,7 +40,9 @@ jobs:
 
     - name: Accept Android licenses
       run: |
-        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        # Явно приймаємо ліцензії для потрібних компонентів
+        echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
 
     - name: Install Android SDK components
       run: |
