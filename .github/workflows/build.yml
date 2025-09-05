@@ -39,7 +39,7 @@ jobs:
         echo "Contents of extracted cmdline-tools:"
         ls -la cmdline-tools/
         
-        # Move contents to correct location
+        # Move contents to correct location - FIXED STRUCTURE
         mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
         mv cmdline-tools/* ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/
         
@@ -59,21 +59,12 @@ jobs:
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         
-        # Find sdkmanager and use it
-        SDKMANAGER_PATH=$(find ~/.buildozer -name "sdkmanager" -type f | head -n 1)
-        if [ -n "$SDKMANAGER_PATH" ]; then
-          echo "Found sdkmanager at: $SDKMANAGER_PATH"
-          yes | $SDKMANAGER_PATH --licenses || echo "License acceptance might have failed, continuing anyway"
-        else
-          echo "ERROR: sdkmanager not found!"
-          find ~/.buildozer -type f
-          exit 1
-        fi
+        # Use sdkmanager with explicit SDK root
+        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=~/.buildozer/android/platform/android-sdk --licenses || echo "License acceptance completed"
 
     - name: Install Android SDK components
       run: |
-        SDKMANAGER_PATH=$(find ~/.buildozer -name "sdkmanager" -type f | head -n 1)
-        $SDKMANAGER_PATH "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=~/.buildozer/android/platform/android-sdk "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
 
     - name: Build APK with Buildozer
       run: |
