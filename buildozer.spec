@@ -38,7 +38,12 @@ description = Простий калькулятор для пекарні
 # Орієнтація
 orientation = portrait
 
-# android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE
+# Дозволи
+android.permissions = INTERNET
+
+# Додаткові налаштування для уникнення помилок
+p4a.branch = master
+android.accept_sdk_license = True
 
 [buildozer]
 
