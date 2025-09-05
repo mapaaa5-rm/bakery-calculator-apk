@@ -30,11 +30,33 @@ jobs:
         # Використовуємо вже встановлений Android SDK в GitHub Actions
         echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
         echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/25.1.8937393" >> $GITHUB_ENV
         
         # Додаємо необхідні шляхи до PATH
         echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
         echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+
+    - name: Fix Android paths for Buildozer compatibility
+      run: |
+        # Створюємо очікувану структуру каталогів для Buildozer
+        sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager
+        
+        # Додаємо tools/bin до PATH
+        echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
+
+    - name: Verify Android tools
+      run: |
+        echo "=== Checking Android tools ==="
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        
+        echo "=== sdkmanager check ==="
+        which sdkmanager
+        sdkmanager --version || echo "sdkmanager version check failed"
+        
+        echo "=== NDK versions available ==="
+        ls -la /usr/local/lib/android/sdk/ndk/ || echo "NDK directory not found"
 
     - name: Accept Android licenses
       run: |
@@ -42,12 +64,22 @@ jobs:
         touch ~/.android/repositories.cfg
         
         # Автоматично приймаємо ліцензії
-        yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | sdkmanager --licenses
 
     - name: Install required Android components
       run: |
+        # Перевіряємо доступні версії NDK
+        echo "Available NDK versions from sdkmanager:"
+        sdkmanager --list | grep "ndk;" | head -10 || true
+        
         # Встановлюємо необхідні компоненти
-        /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
+        
+        # Встановлюємо рекомендовану версію NDK (28c)
+        sdkmanager "ndk;28c"
+        
+        # Встановлюємо також версію 25.1.8937393 для сумісності
+        sdkmanager "ndk;25.1.8937393"
 
     - name: Configure Buildozer
       run: |
@@ -56,20 +88,58 @@ jobs:
           buildozer init
         fi
         
-        # Оновлюємо шляхи в buildozer.spec (якщо потрібно)
-        sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
-        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393|' buildozer.spec
+        # Оновлюємо шляхи в buildozer.spec
+        if [ -f buildozer.spec ]; then
+          # Використовуємо рекомендовану версію NDK
+          sed -i 's|^android.ndk =.*|android.ndk = 28c|' buildozer.spec
+          sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
+          sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/28c|' buildozer.spec
+          
+          # Додаємо налаштування для уникнення оновлень
+          if ! grep -q "android.skip_update" buildozer.spec; then
+            echo "android.skip_update = True" >> buildozer.spec
+          fi
+          if ! grep -q "p4a.skip_ant" buildozer.spec; then
+            echo "p4a.skip_ant = True" >> buildozer.spec
+          fi
+        fi
+        
+        # Перевіряємо фінальну конфігурацію
+        echo "=== Final buildozer.spec content ==="
+        grep -E "(android.(sdk|ndk)|skip_)" buildozer.spec || true
 
     - name: Build APK with Buildozer
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.1.8937393
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28c
       run: |
-        buildozer -v android debug
+        echo "=== Final environment check ==="
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+        echo "PATH: $PATH"
+        
+        # Запускаємо збірку з додатковим логуванням
+        buildozer -v android debug 2>&1 | tee build.log
+        
+        # Перевіряємо результат
+        if [ -f bin/*.apk ]; then
+          echo "APK successfully built!"
+          ls -la bin/
+        else
+          echo "APK build failed. Check build.log for details."
+          exit 1
+        fi
 
-    - name: Upload APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: BakeryCalculator
+        name: BakeryCalculator-APK
         path: bin/*.apk
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Log
+        path: build.log
