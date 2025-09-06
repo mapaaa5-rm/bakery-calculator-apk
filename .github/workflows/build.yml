@@ -85,7 +85,7 @@ jobs:
       run: |
         echo "=== Creating buildozer.spec ==="
         NDK_VERSION=${SELECTED_NDK_VERSION:-23.2.8568313}
-        cat > buildozer.spec << EOF
+        cat > buildozer.spec << 'EOF'
 [app]
 title = BakeryCalculator
 package.name = BakeryCalculator
@@ -116,12 +116,14 @@ p4a.branch = develop
 log_level = 2
 warn_on_root = 1
 EOF
+        # Замінюємо змінну після створення файлу
+        sed -i "s/\$NDK_VERSION/$NDK_VERSION/g" buildozer.spec
         cat buildozer.spec
 
     - name: Prepare libffi patch
       run: |
         mkdir -p patches
-        cat > patches/libffi_fix.patch << EOF
+        cat > patches/libffi_fix.patch << 'EOF'
 --- a/configure.ac
 +++ b/configure.ac
 @@ -212,7 +212,11 @@
