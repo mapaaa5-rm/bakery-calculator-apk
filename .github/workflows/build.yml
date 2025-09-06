@@ -1,4 +1,4 @@
-name: Build APK with Buildozer - Final Workflow
+name: Build APK with Buildozer - Final Corrected Workflow
 
 on:
   push:
@@ -34,17 +34,17 @@ jobs:
         pip install --upgrade pip
         pip install buildozer==1.5.0 cython==0.29.34
 
-    - name: Accept Android SDK licenses
+    - name: Install and configure Android SDK
       run: |
-        echo "=== Accepting Android SDK licenses ==="
-        mkdir -p $ANDROID_HOME/licenses
-        echo "24333f8a63b6825ea9c5514f83c272964db54845" > $ANDROID_HOME/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
+        echo "=== Updating SDK Manager and Accepting Licenses ==="
+        # First, update the SDK manager to sync all package information
+        sudo /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --update
+        # Now, accept all licenses
+        yes | sudo /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
-    - name: Install required Android SDK components
-      run: |
-        echo "=== Installing Android components ==="
-        NDK_VERSIONS=("25.1.8937393" "28.2.13676358" "23.2.8568313")
+        echo "=== Installing Android Components ==="
+        # NDK 25b is the minimum required by modern p4a branches. We try it first.
+        NDK_VERSIONS=("25.1.8937393" "28.2.13676358")
         
         for ndk_version in "${NDK_VERSIONS[@]}"; do
           echo "Trying to install NDK $ndk_version"
@@ -55,8 +55,8 @@ jobs:
           fi
         done
 
-        if [ -z "$SELECTED_NDK_VERSION" ]; then
-            echo "::error::Failed to install any compatible NDK version."
+        if [[ -z "$SELECTED_NDK_VERSION" ]]; then
+            echo "::error::Failed to install any compatible NDK version. License acceptance likely failed."
             exit 1
         fi
         
@@ -67,37 +67,36 @@ jobs:
         echo "=== Creating buildozer.spec ==="
         NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
         
-        cat > buildozer.spec <<EOF
-[app]
-title = BakeryCalculator
-package.name = BakeryCalculator
-package.domain = org.roman
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,spec
-version = 1.0
-requirements = python3,kivy==2.1.0
-android.api = 34
-android.minapi = 21
-android.build_tools = 34.0.0
-android.ndk = $NDK_VERSION
-android.sdk_path = /usr/local/lib/android/sdk
-android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION
-android.archs = arm64-v8a, armeabi-v7a
-fullscreen = 0
-description = Простий калькулятор для пекарні
-orientation = portrait
-android.permissions = INTERNET
-android.gradle_source_compatibility = 17
-android.gradle_target_compatibility = 17
-android.skip_update = True
-p4a.skip_ant = True
-android.accept_sdk_license = True
-p4a.branch = develop
-
-[buildozer]
-log_level = 2
-warn_on_root = 1
-EOF
+        # Create buildozer.spec using echo commands to ensure YAML compatibility
+        echo "[app]" > buildozer.spec
+        echo "title = BakeryCalculator" >> buildozer.spec
+        echo "package.name = BakeryCalculator" >> buildozer.spec
+        echo "package.domain = org.roman" >> buildozer.spec
+        echo "source.dir = ." >> buildozer.spec
+        echo "source.include_exts = py,png,jpg,kv,atlas,spec" >> buildozer.spec
+        echo "version = 1.0" >> buildozer.spec
+        echo "requirements = python3,kivy==2.1.0" >> buildozer.spec
+        echo "android.api = 34" >> buildozer.spec
+        echo "android.minapi = 21" >> buildozer.spec
+        echo "android.build_tools = 34.0.0" >> buildozer.spec
+        echo "android.ndk = $NDK_VERSION" >> buildozer.spec
+        echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+        echo "android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION" >> buildozer.spec
+        echo "android.archs = arm64-v8a, armeabi-v7a" >> buildozer.spec
+        echo "fullscreen = 0" >> buildozer.spec
+        echo "description = Простий калькулятор для пекарні" >> buildozer.spec
+        echo "orientation = portrait" >> buildozer.spec
+        echo "android.permissions = INTERNET" >> buildozer.spec
+        echo "android.gradle_source_compatibility = 17" >> buildozer.spec
+        echo "android.gradle_target_compatibility = 17" >> buildozer.spec
+        echo "android.skip_update = True" >> buildozer.spec
+        echo "p4a.skip_ant = True" >> buildozer.spec
+        echo "android.accept_sdk_license = True" >> buildozer.spec
+        echo "p4a.branch = develop" >> buildozer.spec
+        echo "" >> buildozer.spec
+        echo "[buildozer]" >> buildozer.spec
+        echo "log_level = 2" >> buildozer.spec
+        echo "warn_on_root = 1" >> buildozer.spec
         
         echo "buildozer.spec content:"
         cat buildozer.spec
@@ -114,9 +113,7 @@ EOF
         
         for p4a_branch in "${P4A_BRANCHES[@]}"; do
           echo "--- Attempting build with p4a.branch = $p4a_branch ---"
-          
           sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
-          
           buildozer android clean || true
           
           if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
