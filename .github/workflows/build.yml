@@ -9,64 +9,179 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: Install dependencies
+    - name: Install system dependencies and Buildozer
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libssl-dev \
-          libffi-dev \
-          python3-dev \
-          python3-pip \
-          openjdk-17-jdk \
-          unzip \
-          zip \
-          git \
-          curl
-
+        sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
+          zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake make gcc g++ \
+          autoconf-archive libtool-bin patchelf build-essential
         pip install --upgrade pip
-        pip install buildozer cython virtualenv
+        pip install buildozer==1.5.0 cython==0.29.34
 
-    - name: Accept Android licenses
+    - name: Setup Android environment
       run: |
-        echo "=== Accepting Android licenses manually ==="
-        # Створюємо папку ліцензій (під sudo, бо ANDROID_SDK_ROOT у /usr/local)
-        sudo mkdir -p "$ANDROID_SDK_ROOT/licenses"
+        echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+        echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-        # Записуємо основні ліцензії (через sudo tee щоб не було проблем з правами)
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" | sudo tee "$ANDROID_SDK_ROOT/licenses/android-sdk-license" > /dev/null
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" | sudo tee "$ANDROID_SDK_ROOT/licenses/android-sdk-preview-license" > /dev/null
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" | sudo tee "$ANDROID_SDK_ROOT/licenses/android-googletv-license" > /dev/null
-        echo "33b6a2b26d5f5e527b6c13f6a92a08a3d6d1f10c" | sudo tee "$ANDROID_SDK_ROOT/licenses/google-gdk-license" > /dev/null
-        echo "e9acab5b5fbb560a72e18c256effecb5fbb784e8" | sudo tee "$ANDROID_SDK_ROOT/licenses/mips-android-sysimage-license" > /dev/null
-        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" | sudo tee "$ANDROID_SDK_ROOT/licenses/intel-android-extra-license" > /dev/null
-        echo "36e0153a0a4d354e0c6640ec1626013c7354c9df" | sudo tee "$ANDROID_SDK_ROOT/licenses/android-sdk-arm-dbt-license" > /dev/null
+    - name: Create symlinks for Buildozer compatibility
+      run: |
+        sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager || true
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager || true
+        echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
 
-        # Порожній конфіг для сумісності з sdkmanager
+    - name: Accept Android licenses properly
+      run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
+        
+        # Method 1: Manual license creation (most reliable)
+        mkdir -p /usr/local/lib/android/sdk/licenses
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /usr/local/lib/android/sdk/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > /usr/local/lib/android/sdk/licenses/android-sdk-preview-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > /usr/local/lib/android/sdk/licenses/android-sdk-armeabi-v7a-license
+        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > /usr/local/lib/android/sdk/licenses/android-sdk-arm64-v8a-license
+        
+        # Method 2: Use yes command with timeout to avoid broken pipe
+        sleep 2
+        yes | timeout 30 sdkmanager --licenses || echo "License acceptance completed or timed out"
 
-        # Показуємо вміст для дебагу
-        ls -la "$ANDROID_SDK_ROOT/licenses" || true
-
-    - name: Build APK
+    - name: Install Android components
       run: |
-        buildozer android debug
+        echo "=== Installing Android components ==="
+        
+        # First install platform tools and build tools
+        sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+        
+        # Try multiple NDK versions
+        NDK_VERSIONS=("25.1.8937393" "28.2.13676358" "23.2.8568313")
+        
+        for ndk_version in "${NDK_VERSIONS[@]}"; do
+          echo "Trying to install NDK $ndk_version"
+          if sdkmanager "ndk;$ndk_version"; then
+            echo "SELECTED_NDK_VERSION=$ndk_version" >> $GITHUB_ENV
+            echo "Successfully installed NDK $ndk_version"
+            break
+          else
+            echo "Failed to install NDK $ndk_version"
+          fi
+        done
+
+        if [ -z "$SELECTED_NDK_VERSION" ]; then
+            echo "::error::Failed to install any compatible NDK version. License acceptance likely failed."
+            exit 1
+        fi
+
+    - name: Clean previous builds
+      run: |
+        echo "=== Cleaning previous builds ==="
+        buildozer android clean || true
+        rm -rf .buildozer ~/.buildozer bin/ || true
+
+    - name: Configure Buildozer
+      run: |
+        echo "=== Creating buildozer.spec ==="
+        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
+        
+        # Create buildozer.spec using echo commands to ensure YAML compatibility
+        echo "[app]" > buildozer.spec
+        echo "title = BakeryCalculator" >> buildozer.spec
+        echo "package.name = BakeryCalculator" >> buildozer.spec
+        echo "package.domain = org.roman" >> buildozer.spec
+        echo "source.dir = ." >> buildozer.spec
+        echo "source.include_exts = py,png,jpg,kv,atlas,spec" >> buildozer.spec
+        echo "version = 1.0" >> buildozer.spec
+        echo "requirements = python3,kivy==2.1.0" >> buildozer.spec
+        echo "android.api = 34" >> buildozer.spec
+        echo "android.minapi = 21" >> buildozer.spec
+        echo "android.build_tools = 34.0.0" >> buildozer.spec
+        echo "android.ndk = $NDK_VERSION" >> buildozer.spec
+        echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+        echo "android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION" >> buildozer.spec
+        echo "android.archs = arm64-v8a, armeabi-v7a" >> buildozer.spec
+        echo "fullscreen = 0" >> buildozer.spec
+        echo "description = Простий калькулятор для пекарні" >> buildozer.spec
+        echo "orientation = portrait" >> buildozer.spec
+        echo "android.permissions = INTERNET" >> buildozer.spec
+        echo "android.gradle_source_compatibility = 17" >> buildozer.spec
+        echo "android.gradle_target_compatibility = 17" >> buildozer.spec
+        echo "android.skip_update = True" >> buildozer.spec
+        echo "p4a.skip_ant = True" >> buildozer.spec
+        echo "android.accept_sdk_license = True" >> buildozer.spec
+        echo "p4a.branch = develop" >> buildozer.spec
+        echo "" >> buildozer.spec
+        echo "[buildozer]" >> buildozer.spec
+        echo "log_level = 2" >> buildozer.spec
+        echo "warn_on_root = 1" >> buildozer.spec
+        
+        echo "buildozer.spec content:"
+        cat buildozer.spec
+
+    - name: Build APK with retry logic
+      run: |
+        echo "=== Starting build process ==="
+        NDK_VERSION=${SELECTED_NDK_VERSION}
+        
+        export ANDROID_HOME="/usr/local/lib/android/sdk"
+        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
+        
+        P4A_BRANCHES=("develop" "master")
+        
+        for p4a_branch in "${P4A_BRANCHES[@]}"; do
+          echo "--- Attempting build with p4a.branch = $p4a_branch ---"
+          sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
+          buildozer android clean || true
+          
+          if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
+            if ls bin/*.apk 1>/dev/null 2>&1; then
+              echo "SUCCESSFUL_BRANCH=$p4a_branch" >> $GITHUB_ENV
+              echo "Build with branch $p4a_branch succeeded!"
+              break
+            fi
+          fi
+          echo "Build with branch $p4a_branch failed. Trying next branch..."
+        done
+        
+        if ls bin/*.apk 1>/dev/null 2>&1; then
+          echo "🎉 APK built successfully using branch: ${SUCCESSFUL_BRANCH}"
+          ls -la bin/
+        else
+          echo "💥 All build attempts failed."
+          tail -n 50 build_*.log || true
+          exit 1
+        fi
 
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: MyApp-APK
+        name: BakeryCalculator-APK-${{ env.SUCCESSFUL_BRANCH }}
         path: bin/*.apk
+        retention-days: 7
+
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Logs
+        path: |
+          build_*.log
+          .buildozer/logs/
+        retention-days: 3
