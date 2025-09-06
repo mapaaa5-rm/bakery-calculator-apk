@@ -30,7 +30,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
           zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake make gcc g++ \
-          autoconf-archive libtool-bin patchelf expect
+          autoconf-archive libtool-bin patchelf
         pip install --upgrade pip
         pip install buildozer==1.5.0 cython==0.29.34
 
@@ -59,9 +59,9 @@ jobs:
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > /usr/local/lib/android/sdk/licenses/android-sdk-armeabi-v7a-license
         echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > /usr/local/lib/android/sdk/licenses/android-sdk-arm64-v8a-license
         
-        # Method 2: Try automated acceptance
+        # Method 2: Use yes command properly without broken pipe
         sleep 2
-        (while true; do echo "y"; sleep 1; done) | sdkmanager --licenses --sdk_root=/usr/local/lib/android/sdk || echo "License acceptance completed"
+        yes | timeout 30 sdkmanager --licenses || echo "License acceptance completed or timed out"
 
     - name: Install Android components
       run: |
@@ -71,7 +71,7 @@ jobs:
         sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
         
         # Try multiple NDK versions
-        NDK_VERSIONS=("23.2.8568313" "25.1.8937393" "21.4.7075529" "28.2.13676358")
+        NDK_VERSIONS=("23.2.8568313" "25.1.8937393" "21.4.7075529")
         
         for ndk_version in "${NDK_VERSIONS[@]}"; do
           echo "Trying to install NDK $ndk_version"
