@@ -10,17 +10,17 @@ requirements = python3,kivy==2.1.0
 android.api = 34
 android.minapi = 21
 android.build_tools = 34.0.0
-android.ndk = 25.1.8937393
+android.ndk = 28.2.13676358
 android.sdk_path = /usr/local/lib/android/sdk
-android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393
+android.ndk_path = /usr/local/lib/android/sdk/ndk/28.2.13676358
 android.archs = arm64-v8a, armeabi-v7a
 fullscreen = 0
 description = Простий калькулятор для пекарні
 orientation = portrait
 android.permissions = INTERNET
 
-# Python-for-android branch with fixed libffi
-p4a.branch = develop
+# Stable python-for-android version
+p4a.branch = 2024.06.12
 
 # Java 17 compatibility
 android.gradle_source_compatibility = 17
