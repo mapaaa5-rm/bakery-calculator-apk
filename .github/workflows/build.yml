@@ -1,4 +1,4 @@
-name: Build APK with Buildozer - Fixed
+name: Build APK with Buildozer - Final Fix
 
 on:
   push:
@@ -20,55 +20,43 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
-          zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev make gcc g++
+        sudo apt-get install -y git zip unzip python3-pip
         pip install buildozer==1.5.0 cython==0.29.34
 
     - name: Setup Android environment
       run: |
-        # Використовуємо вже встановлений Android SDK
         echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
         echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        
-        # Додаємо правильні шляхи до PATH
         echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+
+    - name: Create symlinks for Buildozer compatibility
+      run: |
+        # Створюємо директорію, яку очікує Buildozer
+        sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
+        
+        # Створюємо символічні посилання
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
+        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager
+        
+        # Додаємо до PATH
         echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
 
     - name: Verify Android tools
       run: |
         echo "=== Checking Android tools ==="
-        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-        
-        # Чекаємо поки PATH оновиться
-        sleep 2
-        
-        echo "=== Available commands ==="
-        which sdkmanager || echo "sdkmanager not found"
-        which adb || echo "adb not found"
-        
-        echo "=== SDK directory structure ==="
-        ls -la /usr/local/lib/android/sdk/ || echo "SDK directory not found"
-        ls -la /usr/local/lib/android/sdk/cmdline-tools/ || echo "cmdline-tools not found"
+        sleep 2  # Чекаємо оновлення PATH
+        which sdkmanager
+        sdkmanager --version
 
     - name: Accept Android licenses
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
-        
-        # Чекаємо поки PATH оновиться
-        sleep 3
-        
-        # Автоматично приймаємо ліцензії
-        yes | sdkmanager --licenses || echo "License acceptance may have failed"
+        yes | sdkmanager --licenses
 
     - name: Install Android components
       run: |
-        # Чекаємо поки PATH оновиться
-        sleep 2
-        
-        echo "=== Installing Android components ==="
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;23.2.8568313"
+        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
 
     - name: Configure Buildozer
       run: |
@@ -76,14 +64,16 @@ jobs:
           buildozer init
         fi
         
-        # Оновлюємо шляхи в buildozer.spec
-        sed -i 's|^android.ndk =.*|android.ndk = 23.2.8568313|' buildozer.spec
+        # Оновлюємо buildozer.spec
+        sed -i 's|^android.ndk =.*|android.ndk = 25.1.8937393|' buildozer.spec
         sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
-        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/23.2.8568313|' buildozer.spec
+        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393|' buildozer.spec
         
         # Додаємо Java 17 сумісність
         echo "android.gradle_source_compatibility = 17" >> buildozer.spec
         echo "android.gradle_target_compatibility = 17" >> buildozer.spec
+        
+        # Вимкнути перевірки SDK
         echo "android.skip_update = True" >> buildozer.spec
         echo "p4a.skip_ant = True" >> buildozer.spec
 
@@ -91,7 +81,6 @@ jobs:
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/23.2.8568313
       run: |
         echo "=== Building APK ==="
         buildozer -v android debug 2>&1 | tee build.log
