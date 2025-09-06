@@ -1,4 +1,4 @@
-name: Build APK with Buildozer - Stable Version
+name: Build APK with Buildozer - Final Fix
 
 on:
   push:
@@ -45,14 +45,14 @@ jobs:
 
     - name: Install Android components with recommended NDK
       run: |
-        # Встановлюємо рекомендовану версію NDK 28c
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;28.2.13676358"
+        # Встановлюємо рекомендовану версію NDK 25b
+        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
 
-    - name: Clean previous builds
+    - name: Clean previous builds thoroughly
       run: |
         buildozer android clean || true
-        rm -rf .buildozer/android/platform/build-* || true
-        rm -rf .buildozer/android/platform/python-for-android || true
+        rm -rf .buildozer || true
+        rm -rf ~/.buildozer || true
 
     - name: Configure Buildozer with stable versions
       run: |
@@ -60,38 +60,56 @@ jobs:
           buildozer init
         fi
         
-        # Оновлюємо всі критичні налаштування
-        sed -i 's|^android.ndk =.*|android.ndk = 28.2.13676358|' buildozer.spec
-        sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
-        sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/28.2.13676358|' buildozer.spec
-        
-        # Видаляємо старі налаштування p4a.branch
-        sed -i '/p4a.branch/d' buildozer.spec
-        
-        # Додаємо обов'язкові налаштування
-        echo "# Stable python-for-android version" >> buildozer.spec
-        echo "p4a.branch = 2024.06.12" >> buildozer.spec
-        echo "" >> buildozer.spec
-        echo "# Java 17 compatibility" >> buildozer.spec
-        echo "android.gradle_source_compatibility = 17" >> buildozer.spec
-        echo "android.gradle_target_compatibility = 17" >> buildozer.spec
-        echo "" >> buildozer.spec
-        echo "# Skip unnecessary checks" >> buildozer.spec
-        echo "android.skip_update = True" >> buildozer.spec
-        echo "p4a.skip_ant = True" >> buildozer.spec
-        echo "android.accept_sdk_license = True" >> buildozer.spec
+        # Повністю оновлюємо buildozer.spec
+        cat > buildozer.spec << 'EOF'
+[app]
+title = BakeryCalculator
+package.name = BakeryCalculator
+package.domain = org.roman
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,spec
+icon.filename = %(source.dir)s/data/icon.png
+version = 1.0
+requirements = python3,kivy==2.1.0
+android.api = 34
+android.minapi = 21
+android.build_tools = 34.0.0
+android.ndk = 25.1.8937393
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393
+android.archs = arm64-v8a, armeabi-v7a
+fullscreen = 0
+description = Простий калькулятор для пекарні
+orientation = portrait
+android.permissions = INTERNET
 
-        # Перевіряємо фінальну конфігурацію
+# Stable python-for-android version
+p4a.branch = 2024.06.12
+
+# Java 17 compatibility
+android.gradle_source_compatibility = 17
+android.gradle_target_compatibility = 17
+
+# Skip unnecessary checks
+android.skip_update = True
+p4a.skip_ant = True
+android.accept_sdk_license = True
+
+[buildozer]
+log_level = 2
+warn_on_root = 1
+EOF
+
         echo "=== Final buildozer.spec content ==="
-        grep -E "(p4a.branch|android.(ndk|sdk|gradle))" buildozer.spec
+        cat buildozer.spec
 
     - name: Build APK with stable environment
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.1.8937393
       run: |
-        echo "=== Building with stable p4a version 2024.06.12 ==="
+        echo "=== Building with stable p4a version 2024.06.12 and NDK 25b ==="
         echo "Using NDK: $ANDROID_NDK_HOME"
         
         # Збірка з стабільною версією
@@ -101,19 +119,25 @@ jobs:
           echo "✅ APK successfully built!"
           ls -la bin/
         else
-          echo "❌ APK build failed. Trying alternative p4a version..."
+          echo "❌ APK build failed. Trying alternative p4a versions..."
           
-          # Спробуємо альтернативну стабільну версію
-          sed -i 's|^p4a.branch =.*|p4a.branch = 2024.02.26|' buildozer.spec
-          buildozer android clean
-          buildozer -v android debug 2>&1 | tee build_attempt2.log
+          # Спробуємо альтернативні стабільні версії
+          for p4a_version in "2024.02.26" "2023.08.04" "master"; do
+            echo "=== Trying p4a version: $p4a_version ==="
+            sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_version|" buildozer.spec
+            buildozer android clean
+            rm -rf .buildozer/android/platform/python-for-android || true
+            
+            if buildozer -v android debug 2>&1 | tee build_$p4a_version.log; then
+              if ls bin/*.apk 1> /dev/null 2>&1; then
+                echo "✅ APK built with version $p4a_version!"
+                exit 0
+              fi
+            fi
+          done
           
-          if ls bin/*.apk 1> /dev/null 2>&1; then
-            echo "✅ APK built with alternative version!"
-          else
-            echo "❌ All attempts failed"
-            exit 1
-          fi
+          echo "❌ All attempts failed"
+          exit 1
         fi
 
     - name: Upload APK artifact
@@ -130,4 +154,4 @@ jobs:
         name: Build-Logs
         path: |
           build.log
-          build_attempt2.log
+          build_*.log
