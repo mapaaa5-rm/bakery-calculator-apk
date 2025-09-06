@@ -34,68 +34,42 @@ jobs:
         pip install --upgrade pip
         pip install buildozer==1.5.0 cython==0.29.34
 
-    - name: Setup Android environment
+    - name: Accept Android SDK licenses
       run: |
-        echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-        echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "=== Accepting Android SDK licenses ==="
+        mkdir -p $ANDROID_HOME/licenses
+        echo "24333f8a63b6825ea9c5514f83c272964db54845" > $ANDROID_HOME/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > $ANDROID_HOME/licenses/android-sdk-armeabi-v7a-license
+        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > $ANDROID_HOME/licenses/android-sdk-arm64-v8a-license
 
-    - name: Create symlinks for Buildozer compatibility
-      run: |
-        sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
-        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager || true
-        sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager || true
-        echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
-
-    - name: Accept Android licenses properly
-      run: |
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        
-        # Method 1: Manual license creation (most reliable)
-        mkdir -p /usr/local/lib/android/sdk/licenses
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /usr/local/lib/android/sdk/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > /usr/local/lib/android/sdk/licenses/android-sdk-preview-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > /usr/local/lib/android/sdk/licenses/android-sdk-armeabi-v7a-license
-        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > /usr/local/lib/android/sdk/licenses/android-sdk-arm64-v8a-license
-        
-        # Method 2: Use yes command properly without broken pipe
-        sleep 2
-        yes | timeout 30 sdkmanager --licenses || echo "License acceptance completed or timed out"
-
-    - name: Install Android components
+    - name: Install and configure Android SDK
       run: |
         echo "=== Installing Android components ==="
-        
-        # First install platform tools and build tools
-        sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
-        
-        # Try multiple NDK versions
-        NDK_VERSIONS=("23.2.8568313" "25.1.8937393" "21.4.7075529")
+        # NDK 25b is the minimum required by modern p4a branches.
+        NDK_VERSIONS=("25.1.8937393" "28.2.13676358" "23.2.8568313")
         
         for ndk_version in "${NDK_VERSIONS[@]}"; do
           echo "Trying to install NDK $ndk_version"
-          if sdkmanager "ndk;$ndk_version"; then
+          if sudo /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "ndk;$ndk_version"; then
             echo "SELECTED_NDK_VERSION=$ndk_version" >> $GITHUB_ENV
             echo "Successfully installed NDK $ndk_version"
             break
-          else
-            echo "Failed to install NDK $ndk_version"
           fi
         done
 
-    - name: Clean previous builds
-      run: |
-        echo "=== Cleaning previous builds ==="
-        buildozer android clean || true
-        rm -rf .buildozer ~/.buildozer bin/ || true
+        if [ -z "${SELECTED_NDK_VERSION}" ]; then
+            echo "Failed to install any NDK version."
+            exit 1
+        fi
+        
+        sudo /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
 
     - name: Configure Buildozer
       run: |
         echo "=== Creating buildozer.spec ==="
-        NDK_VERSION=${SELECTED_NDK_VERSION:-23.2.8568313}
+        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
         
-        # Create buildozer.spec using echo commands
         echo "[app]" > buildozer.spec
         echo "title = BakeryCalculator" >> buildozer.spec
         echo "package.name = BakeryCalculator" >> buildozer.spec
@@ -126,18 +100,18 @@ jobs:
         echo "log_level = 2" >> buildozer.spec
         echo "warn_on_root = 1" >> buildozer.spec
         
+        echo "buildozer.spec content:"
         cat buildozer.spec
 
     - name: Build APK with retry logic
-      env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        ANDROID_HOME: /usr/local/lib/android/sdk
       run: |
         echo "=== Starting build process ==="
-        NDK_VERSION=${SELECTED_NDK_VERSION:-23.2.8568313}
+        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
+        
+        export ANDROID_HOME="/usr/local/lib/android/sdk"
         export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
         
-        P4A_BRANCHES=("develop" "master" "2024.06.12" "2024.02.26")
+        P4A_BRANCHES=("develop" "master")
         
         for p4a_branch in "${P4A_BRANCHES[@]}"; do
           echo "--- Attempting build with p4a.branch = $p4a_branch ---"
@@ -145,7 +119,6 @@ jobs:
           sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
           
           buildozer android clean || true
-          rm -rf .buildozer/android/platform/python-for-android || true
           
           if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
             if ls bin/*.apk 1>/dev/null 2>&1; then
@@ -158,7 +131,7 @@ jobs:
         done
         
         if ls bin/*.apk 1>/dev/null 2>&1; then
-          echo "🎉 APK built successfully using branch: $SUCCESSFUL_BRANCH"
+          echo "🎉 APK built successfully using branch: ${SUCCESSFUL_BRANCH}"
           ls -la bin/
         else
           echo "💥 All build attempts failed."
@@ -170,7 +143,7 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: BakeryCalculator-APK
+        name: BakeryCalculator-APK-${{ env.SUCCESSFUL_BRANCH }}
         path: bin/*.apk
         retention-days: 7
 
@@ -179,5 +152,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Build-Logs
-        path: build_*.log
+        path: |
+          build_*.log
+          .buildozer/logs/
         retention-days: 3
+
+
