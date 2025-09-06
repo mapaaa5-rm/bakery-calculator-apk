@@ -1,4 +1,4 @@
-name: Build APK with Buildozer - Final Fix
+name: Build APK with Buildozer - Fixed
 
 on:
   push:
@@ -29,67 +29,82 @@ jobs:
         echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
         echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-    - name: Create symlinks for Buildozer compatibility
+    - name: Create symlinks for Buildozer
       run: |
-        # Створюємо директорію, яку очікує Buildozer
         sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
-        
-        # Створюємо символічні посилання
         sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
         sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager
-        
-        # Додаємо до PATH
         echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
-
-    - name: Verify Android tools
-      run: |
-        echo "=== Checking Android tools ==="
-        sleep 2  # Чекаємо оновлення PATH
-        which sdkmanager
-        sdkmanager --version
 
     - name: Accept Android licenses
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
+        sleep 2
         yes | sdkmanager --licenses
 
     - name: Install Android components
       run: |
         sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
 
-    - name: Configure Buildozer
+    - name: Clean previous builds
+      run: |
+        buildozer android clean || true
+        rm -rf .buildozer/android/platform/build-* || true
+        rm -rf .buildozer/android/platform/python-for-android || true
+
+    - name: Configure Buildozer with latest p4a
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
-        # Оновлюємо buildozer.spec
+        # Оновлюємо всі критичні налаштування
         sed -i 's|^android.ndk =.*|android.ndk = 25.1.8937393|' buildozer.spec
         sed -i 's|^android.sdk_path =.*|android.sdk_path = /usr/local/lib/android/sdk|' buildozer.spec
         sed -i 's|^android.ndk_path =.*|android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393|' buildozer.spec
         
-        # Додаємо Java 17 сумісність
+        # Додаємо обов'язкові налаштування
+        echo "# Python-for-android branch with fixed libffi" >> buildozer.spec
+        echo "p4a.branch = develop" >> buildozer.spec
+        echo "" >> buildozer.spec
+        echo "# Java 17 compatibility" >> buildozer.spec
         echo "android.gradle_source_compatibility = 17" >> buildozer.spec
         echo "android.gradle_target_compatibility = 17" >> buildozer.spec
-        
-        # Вимкнути перевірки SDK
+        echo "" >> buildozer.spec
+        echo "# Skip unnecessary checks" >> buildozer.spec
         echo "android.skip_update = True" >> buildozer.spec
         echo "p4a.skip_ant = True" >> buildozer.spec
+        echo "android.accept_sdk_license = True" >> buildozer.spec
 
-    - name: Build APK
+    - name: Build APK with retry
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.1.8937393
       run: |
-        echo "=== Building APK ==="
-        buildozer -v android debug 2>&1 | tee build.log
+        echo "=== Building APK with develop branch ==="
         
+        # Перша спроба збірки
+        if buildozer -v android debug 2>&1 | tee build.log; then
+          echo "✅ APK successfully built on first attempt!"
+        else
+          echo "⚠️ First attempt failed, cleaning and retrying..."
+          buildozer android clean
+          rm -rf .buildozer/android/platform/python-for-android
+          
+          # Друга спроба з додатковими флагами
+          CFLAGS="-Wno-error=implicit-function-declaration" \
+          LDFLAGS="-L/usr/lib/x86_64-linux-gnu" \
+          buildozer -v android debug 2>&1 | tee build_attempt2.log
+        fi
+        
+        # Перевірка результату
         if ls bin/*.apk 1> /dev/null 2>&1; then
           echo "✅ APK successfully built!"
           ls -la bin/
         else
-          echo "❌ APK build failed. Check build.log for details."
+          echo "❌ APK build failed after all attempts"
           exit 1
         fi
 
@@ -100,9 +115,11 @@ jobs:
         name: BakeryCalculator-APK
         path: bin/*.apk
 
-    - name: Upload build log
+    - name: Upload build logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: Build-Log
-        path: build.log
+        name: Build-Logs
+        path: |
+          build.log
+          build_attempt2.log
