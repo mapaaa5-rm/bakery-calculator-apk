@@ -1,4 +1,4 @@
-name: Build APK with Buildozer - Final Corrected Workflow
+name: Build APK with Buildozer - Final Workflow
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
           zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake make gcc g++ \
-          autoconf-archive libtool-bin patchelf
+          autoconf-archive libtool-bin patchelf build-essential
         pip install --upgrade pip
         pip install buildozer==1.5.0 cython==0.29.34
 
@@ -40,13 +40,10 @@ jobs:
         mkdir -p $ANDROID_HOME/licenses
         echo "24333f8a63b6825ea9c5514f83c272964db54845" > $ANDROID_HOME/licenses/android-sdk-license
         echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > $ANDROID_HOME/licenses/android-sdk-armeabi-v7a-license
-        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > $ANDROID_HOME/licenses/android-sdk-arm64-v8a-license
-
-    - name: Install and configure Android SDK
+        
+    - name: Install required Android SDK components
       run: |
         echo "=== Installing Android components ==="
-        # NDK 25b is the minimum required by modern p4a branches.
         NDK_VERSIONS=("25.1.8937393" "28.2.13676358" "23.2.8568313")
         
         for ndk_version in "${NDK_VERSIONS[@]}"; do
@@ -58,8 +55,8 @@ jobs:
           fi
         done
 
-        if [ -z "${SELECTED_NDK_VERSION}" ]; then
-            echo "Failed to install any NDK version."
+        if [ -z "$SELECTED_NDK_VERSION" ]; then
+            echo "::error::Failed to install any compatible NDK version."
             exit 1
         fi
         
@@ -70,35 +67,37 @@ jobs:
         echo "=== Creating buildozer.spec ==="
         NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
         
-        echo "[app]" > buildozer.spec
-        echo "title = BakeryCalculator" >> buildozer.spec
-        echo "package.name = BakeryCalculator" >> buildozer.spec
-        echo "package.domain = org.roman" >> buildozer.spec
-        echo "source.dir = ." >> buildozer.spec
-        echo "source.include_exts = py,png,jpg,kv,atlas,spec" >> buildozer.spec
-        echo "version = 1.0" >> buildozer.spec
-        echo "requirements = python3,kivy==2.1.0" >> buildozer.spec
-        echo "android.api = 34" >> buildozer.spec
-        echo "android.minapi = 21" >> buildozer.spec
-        echo "android.build_tools = 34.0.0" >> buildozer.spec
-        echo "android.ndk = $NDK_VERSION" >> buildozer.spec
-        echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
-        echo "android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION" >> buildozer.spec
-        echo "android.archs = arm64-v8a, armeabi-v7a" >> buildozer.spec
-        echo "fullscreen = 0" >> buildozer.spec
-        echo "description = Простий калькулятор для пекарні" >> buildozer.spec
-        echo "orientation = portrait" >> buildozer.spec
-        echo "android.permissions = INTERNET" >> buildozer.spec
-        echo "android.gradle_source_compatibility = 17" >> buildozer.spec
-        echo "android.gradle_target_compatibility = 17" >> buildozer.spec
-        echo "android.skip_update = True" >> buildozer.spec
-        echo "p4a.skip_ant = True" >> buildozer.spec
-        echo "android.accept_sdk_license = True" >> buildozer.spec
-        echo "p4a.branch = develop" >> buildozer.spec
-        echo "" >> buildozer.spec
-        echo "[buildozer]" >> buildozer.spec
-        echo "log_level = 2" >> buildozer.spec
-        echo "warn_on_root = 1" >> buildozer.spec
+        cat > buildozer.spec <<EOF
+[app]
+title = BakeryCalculator
+package.name = BakeryCalculator
+package.domain = org.roman
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,spec
+version = 1.0
+requirements = python3,kivy==2.1.0
+android.api = 34
+android.minapi = 21
+android.build_tools = 34.0.0
+android.ndk = $NDK_VERSION
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION
+android.archs = arm64-v8a, armeabi-v7a
+fullscreen = 0
+description = Простий калькулятор для пекарні
+orientation = portrait
+android.permissions = INTERNET
+android.gradle_source_compatibility = 17
+android.gradle_target_compatibility = 17
+android.skip_update = True
+p4a.skip_ant = True
+android.accept_sdk_license = True
+p4a.branch = develop
+
+[buildozer]
+log_level = 2
+warn_on_root = 1
+EOF
         
         echo "buildozer.spec content:"
         cat buildozer.spec
@@ -106,7 +105,7 @@ jobs:
     - name: Build APK with retry logic
       run: |
         echo "=== Starting build process ==="
-        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
+        NDK_VERSION=${SELECTED_NDK_VERSION}
         
         export ANDROID_HOME="/usr/local/lib/android/sdk"
         export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
@@ -156,5 +155,3 @@ jobs:
           build_*.log
           .buildozer/logs/
         retention-days: 3
-
-
