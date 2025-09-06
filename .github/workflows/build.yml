@@ -62,7 +62,6 @@ jobs:
         # Verify licenses were created
         echo "=== Checking license files ==="
         ls -la /usr/local/lib/android/sdk/licenses/ || true
-        cat /usr/local/lib/android/sdk/licenses/* || true
 
     - name: Install Android components
       run: |
@@ -79,7 +78,7 @@ jobs:
         else
           echo "Failed to install NDK 25.1.8937393, trying fallback..."
           # Try alternative NDK versions
-          NDK_VERSIONS=("23.2.8568313" "21.4.7075529" "28.2.13676358")
+          NDK_VERSIONS=("23.2.8568313" "21.4.7075529")
           for ndk_version in "${NDK_VERSIONS[@]}"; do
             echo "Trying to install NDK $ndk_version"
             if sdkmanager "ndk;$ndk_version"; then
@@ -149,12 +148,14 @@ jobs:
         export ANDROID_HOME="/usr/local/lib/android/sdk"
         export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
         
-        P4A_BRANCHES=("develop" "master" "2024.06.12" "2024.02.26")
+        # Use only existing branches: develop and master
+        P4A_BRANCHES=("develop" "master")
         
         for p4a_branch in "${P4A_BRANCHES[@]}"; do
           echo "--- Attempting build with p4a.branch = $p4a_branch ---"
           sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
           buildozer android clean || true
+          rm -rf .buildozer/android/platform/python-for-android || true
           
           if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
             if ls bin/*.apk 1>/dev/null 2>&1; then
@@ -171,7 +172,12 @@ jobs:
           ls -la bin/
         else
           echo "💥 All build attempts failed."
-          tail -n 50 build_*.log || true
+          echo "=== Last 20 lines of each log ==="
+          for log_file in build_*.log; do
+            echo "--- $log_file ---"
+            tail -n 20 "$log_file" || true
+            echo ""
+          done
           exit 1
         fi
 
@@ -179,7 +185,7 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: BakeryCalculator-APK-${{ env.SUCCESSFUL_BRANCH }}
+        name: BakeryCalculator-APK
         path: bin/*.apk
         retention-days: 7
 
@@ -188,7 +194,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Build-Logs
-        path: |
-          build_*.log
-          .buildozer/logs/
+        path: build_*.log
         retention-days: 3
