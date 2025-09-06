@@ -46,44 +46,19 @@ jobs:
         sleep 3
         which sdkmanager || echo "sdkmanager not found - checking alternatives"
         which adb || echo "adb not found"
-        
-        if [ ! -f /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager ]; then
-          echo "Trying to find sdkmanager in other locations..."
-          find /usr/local/lib/android/sdk -name "sdkmanager" 2>/dev/null || true
-        fi
 
     - name: Accept Android licenses
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         sleep 2
-        
-        # Try multiple license acceptance methods
-        yes | sdkmanager --licenses || \
-        (echo "y" | sdkmanager --licenses) || \
-        (echo "Trying alternative license acceptance..." && \
-         mkdir -p /usr/local/lib/android/sdk/licenses && \
-         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /usr/local/lib/android/sdk/licenses/android-sdk-license && \
-         echo "84831b9409646a918e30573bab4c9c91346d8abd" > /usr/local/lib/android/sdk/licenses/android-sdk-preview-license)
+        yes | sdkmanager --licenses
 
     - name: Install Android components
       run: |
         echo "=== Installing Android components ==="
-        
-        NDK_VERSIONS=("25.1.8937393" "23.2.8568313" "28.2.13676358" "21.4.7075529")
-        
-        for ndk_version in "${NDK_VERSIONS[@]}"; do
-          echo "Trying to install NDK version: $ndk_version"
-          if sdkmanager "ndk;$ndk_version"; then
-            echo "Successfully installed NDK $ndk_version"
-            echo "SELECTED_NDK_VERSION=$ndk_version" >> $GITHUB_ENV
-            break
-          else
-            echo "Failed to install NDK $ndk_version"
-          fi
-        done
-        
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
+        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.1.8937393"
+        echo "SELECTED_NDK_VERSION=25.1.8937393" >> $GITHUB_ENV
 
     - name: Clean previous builds
       run: |
@@ -93,7 +68,7 @@ jobs:
         rm -rf ~/.buildozer || true
         rm -rf bin/ || true
 
-    - name: Configure Buildozer with all possible fixes
+    - name: Configure Buildozer
       run: |
         echo "=== Configuring Buildozer ==="
         
@@ -140,69 +115,43 @@ EOF
         echo "=== Final buildozer.spec ==="
         cat buildozer.spec
 
-    - name: Prepare libffi patch
-      run: |
-        echo "=== Preparing libffi patch workaround ==="
-        
-        mkdir -p patches
-        cat > patches/libffi_fix.patch << 'EOF'
---- a/configure.ac
-+++ b/configure.ac
-@@ -212,7 +212,11 @@
- AC_PROG_LIBTOOL
- 
- # Check if the tool supports the symbol prefix
--LT_SYS_SYMBOL_USCORE
-+m4_ifdef([LT_SYS_SYMBOL_USCORE], 
-+         [LT_SYS_SYMBOL_USCORE],
-+         [AC_MSG_WARN([LT_SYS_SYMBOL_USCORE not found, skipping])]
-+)
-+
- 
- AC_CONFIG_FILES([Makefile include/Makefile testsuite/Makefile man/Makefile])
- AC_CONFIG_FILES([libffi.pc], [chmod +x libffi.pc])
-EOF
-
-    - name: Build APK with comprehensive retry mechanism
+    - name: Build APK with retry mechanism
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
         CFLAGS: "-Wno-error=implicit-function-declaration -Wno-error=deprecated-declarations"
         LDFLAGS: "-L/usr/lib/x86_64-linux-gnu"
-        PYTHONPATH: "/usr/local/lib/python3.10/dist-packages"
       run: |
-        echo "=== Starting comprehensive build process ==="
+        echo "=== Starting build process ==="
         
         P4A_BRANCHES=("develop" "2024.06.12" "2024.02.26" "2023.08.04" "master")
         NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
         export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
         
         for p4a_branch in "${P4A_BRANCHES[@]}"; do
-          echo "🧪 Trying p4a.branch = $p4a_branch with NDK $NDK_VERSION"
+          echo "Trying p4a.branch = $p4a_branch with NDK $NDK_VERSION"
           
           sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
           
-          buildozer android clean || true
+          buildozer android clean
           rm -rf .buildozer/android/platform/python-for-android || true
-          rm -rf ~/.buildozer/android/platform/python-for-android || true
           
           if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
             if ls bin/*.apk 1> /dev/null 2>&1; then
-              echo "✅ SUCCESS: APK built with p4a.branch = $p4a_branch"
+              echo "SUCCESS: APK built with p4a.branch = $p4a_branch"
               echo "SUCCESSFUL_BRANCH=$p4a_branch" >> $GITHUB_ENV
               break
             fi
           fi
           
-          echo "❌ Failed with p4a.branch = $p4a_branch"
+          echo "Failed with p4a.branch = $p4a_branch"
         done
         
         if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "🎉 APK successfully built!"
+          echo "APK successfully built!"
           ls -la bin/
         else
-          echo "💥 All build attempts failed"
-          tail -20 build_*.log || true
+          echo "All build attempts failed"
           exit 1
         fi
 
@@ -212,7 +161,6 @@ EOF
       with:
         name: BakeryCalculator-APK
         path: bin/*.apk
-        retention-days: 7
 
     - name: Upload build logs
       if: always()
@@ -220,10 +168,7 @@ EOF
       with:
         name: Build-Logs
         path: build_*.log
-        retention-days: 3
 
     - name: Show success message
       if: success()
-      run: |
-        echo "🎊 BUILD SUCCESSFUL! 🎊"
-        echo "APK file is available in the bin/ directory"
+      run: echo "BUILD SUCCESSFUL! APK file is available in bin/"
