@@ -58,6 +58,7 @@ jobs:
         touch ~/.android/repositories.cfg
         sleep 2
         
+        # Try multiple license acceptance methods
         yes | sdkmanager --licenses || \
         (echo "y" | sdkmanager --licenses) || \
         (echo "Trying alternative license acceptance..." && \
@@ -102,7 +103,8 @@ jobs:
         
         NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
         
-        cat > temp_spec << 'EOF'
+        # Create buildozer.spec with proper formatting
+        cat > buildozer.spec << EOF
 [app]
 title = BakeryCalculator
 package.name = BakeryCalculator
@@ -135,10 +137,6 @@ log_level = 2
 warn_on_root = 1
 EOF
         
-        # Замінюємо змінну в temp_spec
-        sed -i "s/\$NDK_VERSION/$NDK_VERSION/g" temp_spec
-        mv temp_spec buildozer.spec
-        
         echo "=== Final buildozer.spec ==="
         cat buildozer.spec
 
@@ -164,8 +162,6 @@ EOF
  AC_CONFIG_FILES([Makefile include/Makefile testsuite/Makefile man/Makefile])
  AC_CONFIG_FILES([libffi.pc], [chmod +x libffi.pc])
 EOF
-
-        echo "LIBFFI_PATCH_READY=1" >> $GITHUB_ENV
 
     - name: Build APK with comprehensive retry mechanism
       env:
@@ -202,7 +198,7 @@ EOF
         done
         
         if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "🎉 APK successfully built with branch: $SUCCESSFUL_BRANCH"
+          echo "🎉 APK successfully built!"
           ls -la bin/
         else
           echo "💥 All build attempts failed"
@@ -229,5 +225,5 @@ EOF
     - name: Show success message
       if: success()
       run: |
-        echo "🎊🎊🎊 BUILD SUCCESSFUL! 🎊🎊🎊"
+        echo "🎊 BUILD SUCCESSFUL! 🎊"
         echo "APK file is available in the bin/ directory"
