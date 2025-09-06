@@ -1,7 +1,9 @@
-name: Build APK with Buildozer - Final Fix
+name: Build APK with Buildozer - Ultimate Solution
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 jobs:
@@ -20,7 +22,9 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip python3-pip autoconf libtool pkg-config
+        sudo apt-get install -y git zip unzip python3-pip autoconf automake libtool pkg-config \
+          zlib1g-dev libncurses5-dev cmake libffi-dev libssl-dev make gcc g++ \
+          autoconf-archive libtool-bin patchelf
         pip install buildozer==1.5.0 cython==0.29.34
 
     - name: Setup Android environment
@@ -29,88 +33,182 @@ jobs:
         echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
         echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-    - name: Create symlinks for Buildozer
+    - name: Create symlinks for Buildozer compatibility
       run: |
         sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
         sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
         sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager
         echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
 
+    - name: Verify Android tools
+      run: |
+        echo "=== Checking Android tools ==="
+        sleep 3
+        which sdkmanager || echo "sdkmanager not found - checking alternatives"
+        which adb || echo "adb not found"
+        
+        if [ ! -f /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager ]; then
+          echo "Trying to find sdkmanager in other locations..."
+          find /usr/local/lib/android/sdk -name "sdkmanager" 2>/dev/null || true
+        fi
+
     - name: Accept Android licenses
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         sleep 2
-        yes | sdkmanager --licenses
+        
+        yes | sdkmanager --licenses || \
+        (echo "y" | sdkmanager --licenses) || \
+        (echo "Trying alternative license acceptance..." && \
+         mkdir -p /usr/local/lib/android/sdk/licenses && \
+         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /usr/local/lib/android/sdk/licenses/android-sdk-license && \
+         echo "84831b9409646a918e30573bab4c9c91346d8abd" > /usr/local/lib/android/sdk/licenses/android-sdk-preview-license)
 
-    - name: Install Android components with recommended NDK
+    - name: Install Android components
       run: |
-        # Встановлюємо рекомендовану версію NDK 25b
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools" "ndk;25.2.9519653"
+        echo "=== Installing Android components ==="
+        
+        NDK_VERSIONS=("25.1.8937393" "23.2.8568313" "28.2.13676358" "21.4.7075529")
+        
+        for ndk_version in "${NDK_VERSIONS[@]}"; do
+          echo "Trying to install NDK version: $ndk_version"
+          if sdkmanager "ndk;$ndk_version"; then
+            echo "Successfully installed NDK $ndk_version"
+            echo "SELECTED_NDK_VERSION=$ndk_version" >> $GITHUB_ENV
+            break
+          else
+            echo "Failed to install NDK $ndk_version"
+          fi
+        done
+        
+        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
 
-    - name: Clean previous builds thoroughly
+    - name: Clean previous builds
       run: |
+        echo "=== Cleaning previous builds ==="
         buildozer android clean || true
         rm -rf .buildozer || true
         rm -rf ~/.buildozer || true
+        rm -rf bin/ || true
 
-    - name: Configure Buildozer with stable versions
+    - name: Configure Buildozer with all possible fixes
       run: |
+        echo "=== Configuring Buildozer ==="
+        
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
-        # Повністю оновлюємо buildozer.spec, видаляючи зайві відступи для коректного синтаксису
-        cat << 'EOF' | sed 's/^[[:space:]]\{8\}//' > buildozer.spec
-        [app]
-        title = BakeryCalculator
-        package.name = BakeryCalculator
-        package.domain = org.roman
-        source.dir = .
-        source.include_exts = py,png,jpg,kv,atlas,spec
-        icon.filename = %(source.dir)s/data/icon.png
-        version = 1.0
-        requirements = python3,kivy==2.1.0,requests,urllib3,idna,chardet,certifi
-        android.api = 34
-        android.minapi = 21
-        android.build_tools = 34.0.0
-        android.ndk = 25b
-        android.ndk_path = /usr/local/lib/android/sdk/ndk/25.2.9519653
-        android.archs = arm64-v8a, armeabi-v7a
-        fullscreen = 0
-        description = A simple calculator for a bakery
-        orientation = portrait
-        android.permissions = INTERNET
+        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
+        
+        cat > temp_spec << 'EOF'
+[app]
+title = BakeryCalculator
+package.name = BakeryCalculator
+package.domain = org.roman
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,spec
+icon.filename = %(source.dir)s/data/icon.png
+version = 1.0
+requirements = python3,kivy==2.1.0
+android.api = 34
+android.minapi = 21
+android.build_tools = 34.0.0
+android.ndk = $NDK_VERSION
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/$NDK_VERSION
+android.archs = arm64-v8a, armeabi-v7a
+fullscreen = 0
+description = Простий калькулятор для пекарні
+orientation = portrait
+android.permissions = INTERNET
+android.gradle_source_compatibility = 17
+android.gradle_target_compatibility = 17
+android.skip_update = True
+p4a.skip_ant = True
+android.accept_sdk_license = True
+p4a.branch = develop
 
-        # Stable python-for-android version
-        p4a.branch = 2024.06.12
-
-        # Java 17 compatibility
-        android.gradle_source_compatibility = 17
-        android.gradle_target_compatibility = 17
-
-        # Skip unnecessary checks
-        android.skip_update = True
-        p4a.skip_ant = True
-        android.accept_sdk_license = True
-
-        [buildozer]
-        log_level = 2
-        warn_on_root = 1
-        EOF
-
-        echo "=== Final buildozer.spec content ==="
+[buildozer]
+log_level = 2
+warn_on_root = 1
+EOF
+        
+        # Замінюємо змінну в temp_spec
+        sed -i "s/\$NDK_VERSION/$NDK_VERSION/g" temp_spec
+        mv temp_spec buildozer.spec
+        
+        echo "=== Final buildozer.spec ==="
         cat buildozer.spec
 
-    - name: Build APK with stable environment
+    - name: Prepare libffi patch
+      run: |
+        echo "=== Preparing libffi patch workaround ==="
+        
+        mkdir -p patches
+        cat > patches/libffi_fix.patch << 'EOF'
+--- a/configure.ac
++++ b/configure.ac
+@@ -212,7 +212,11 @@
+ AC_PROG_LIBTOOL
+ 
+ # Check if the tool supports the symbol prefix
+-LT_SYS_SYMBOL_USCORE
++m4_ifdef([LT_SYS_SYMBOL_USCORE], 
++         [LT_SYS_SYMBOL_USCORE],
++         [AC_MSG_WARN([LT_SYS_SYMBOL_USCORE not found, skipping])]
++)
++
+ 
+ AC_CONFIG_FILES([Makefile include/Makefile testsuite/Makefile man/Makefile])
+ AC_CONFIG_FILES([libffi.pc], [chmod +x libffi.pc])
+EOF
+
+        echo "LIBFFI_PATCH_READY=1" >> $GITHUB_ENV
+
+    - name: Build APK with comprehensive retry mechanism
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
+        CFLAGS: "-Wno-error=implicit-function-declaration -Wno-error=deprecated-declarations"
+        LDFLAGS: "-L/usr/lib/x86_64-linux-gnu"
+        PYTHONPATH: "/usr/local/lib/python3.10/dist-packages"
       run: |
-        echo "=== Building with stable p4a version 2024.06.12 and NDK 25b ==="
-        echo "Using NDK: $ANDROID_NDK_HOME"
-        buildozer -v android debug
+        echo "=== Starting comprehensive build process ==="
+        
+        P4A_BRANCHES=("develop" "2024.06.12" "2024.02.26" "2023.08.04" "master")
+        NDK_VERSION=${SELECTED_NDK_VERSION:-25.1.8937393}
+        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
+        
+        for p4a_branch in "${P4A_BRANCHES[@]}"; do
+          echo "🧪 Trying p4a.branch = $p4a_branch with NDK $NDK_VERSION"
+          
+          sed -i "s|^p4a.branch =.*|p4a.branch = $p4a_branch|" buildozer.spec
+          
+          buildozer android clean || true
+          rm -rf .buildozer/android/platform/python-for-android || true
+          rm -rf ~/.buildozer/android/platform/python-for-android || true
+          
+          if buildozer -v android debug 2>&1 | tee "build_${p4a_branch}.log"; then
+            if ls bin/*.apk 1> /dev/null 2>&1; then
+              echo "✅ SUCCESS: APK built with p4a.branch = $p4a_branch"
+              echo "SUCCESSFUL_BRANCH=$p4a_branch" >> $GITHUB_ENV
+              break
+            fi
+          fi
+          
+          echo "❌ Failed with p4a.branch = $p4a_branch"
+        done
+        
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "🎉 APK successfully built with branch: $SUCCESSFUL_BRANCH"
+          ls -la bin/
+        else
+          echo "💥 All build attempts failed"
+          tail -20 build_*.log || true
+          exit 1
+        fi
 
     - name: Upload APK artifact
       if: success()
@@ -118,11 +216,18 @@ jobs:
       with:
         name: BakeryCalculator-APK
         path: bin/*.apk
+        retention-days: 7
 
-    - name: Upload build logs on failure
-      if: failure()
+    - name: Upload build logs
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: Build-Logs
-        path: .buildozer/logs/build.log
+        path: build_*.log
+        retention-days: 3
 
+    - name: Show success message
+      if: success()
+      run: |
+        echo "🎊🎊🎊 BUILD SUCCESSFUL! 🎊🎊🎊"
+        echo "APK file is available in the bin/ directory"
