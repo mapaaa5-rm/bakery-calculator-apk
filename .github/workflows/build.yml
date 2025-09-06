@@ -1,30 +1,56 @@
-name: Build APK with Docker Buildozer
+name: Build Kivy APK with Buildozer
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ "main", "master" ] # Запускати при пуші в гілки main або master
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest # Використовувати останню версію Ubuntu
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Build with Docker Buildozer
-      run: |
-        docker run --rm \
-          -v "${{ github.workspace }}":/home/user/myapp \
-          -v "${{ github.workspace }}/.buildozer":/home/user/.buildozer \
-          -w /home/user/myapp \
-          pythonictech/buildozer \
-          buildozer android debug
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9' # Можна вказати потрібну версію Python
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: myapp-apk
-        path: ./bin/*.apk
+      - name: Cache Buildozer dependencies
+        uses: actions/cache@v3
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      - name: Install Buildozer and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              python3-pip \
+              build-essential \
+              git \
+              python3-dev \
+              libsdl2-dev \
+              libsdl2-image-dev \
+              libsdl2-mixer-dev \
+              libsdl2-ttf-dev \
+              libportmidi-dev \
+              libswscale-dev \
+              libavformat-dev \
+              libavcodec-dev \
+              zlib1g-dev
+          pip install "cython<3.0" buildozer
+
+      - name: Build with Buildozer
+        run: |
+          buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: bin/*.apk
+          
