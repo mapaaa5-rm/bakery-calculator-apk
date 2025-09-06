@@ -2,11 +2,11 @@ name: Build Kivy APK with Buildozer
 
 on:
   push:
-    branches: [ "main", "master" ] # Запускати при пуші в гілки main або master
+    branches: [ "main", "master" ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Використовувати останню версію Ubuntu
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # Можна вказати потрібну версію Python
+          python-version: '3.9'
 
       - name: Cache Buildozer dependencies
         uses: actions/cache@v3
@@ -43,6 +43,11 @@ jobs:
               libavcodec-dev \
               zlib1g-dev
           pip install "cython<3.0" buildozer
+
+      # ----- ДОДАЙТЕ ЦЕЙ БЛОК -----
+      - name: Accept Android SDK licenses
+        run: yes | ${{ env.ANDROID_HOME }}/cmdline-tools/latest/bin/sdkmanager --licenses
+      # ---------------------------
 
       - name: Build with Buildozer
         run: |
