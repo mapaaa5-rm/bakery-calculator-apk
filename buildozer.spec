@@ -6,6 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
 requirements = python3,kivy==2.1.0
+# Жорстко фіксуємо версію до стабільного релізу
+p4a.branch = v2024.01.21
 
 # Android settings
 android.api = 34
