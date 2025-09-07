@@ -17,102 +17,30 @@ jobs:
         with:
           python-version: '3.9'
 
+      - name: Cache Buildozer dependencies
+        uses: actions/cache@v3
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
       - name: Install Buildozer and dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-              python3-pip \
-              build-essential \
-              git \
-              python3-dev \
-              libsdl2-dev \
-              libsdl2-image-dev \
-              libsdl2-mixer-dev \
-              libsdl2-ttf-dev \
-              libportmidi-dev \
-              libswscale-dev \
-              libavformat-dev \
-              libavcodec-dev \
-              zlib1g-dev \
-              autoconf \
-              automake \
-              libtool \
-              pkg-config \
-              libffi-dev \
-              libssl-dev
           pip install "cython<3.0" buildozer
 
-      - name: Setup Android environment
+      - name: Install specific build tools
         run: |
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-      - name: Create symlinks for Buildozer compatibility
-        run: |
-          sudo mkdir -p /usr/local/lib/android/sdk/tools/bin
-          sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager || true
-          sudo ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager /usr/local/lib/android/sdk/tools/bin/avdmanager || true
-          echo "/usr/local/lib/android/sdk/tools/bin" >> $GITHUB_PATH
-
-      - name: Accept Android licenses with multiple methods
-        run: |
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
-          
-          # Method 1: Manual license creation (most reliable)
-          mkdir -p /usr/local/lib/android/sdk/licenses
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > /usr/local/lib/android/sdk/licenses/android-sdk-license
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > /usr/local/lib/android/sdk/licenses/android-sdk-preview-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > /usr/local/lib/android/sdk/licenses/android-sdk-armeabi-v7a-license
-          echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > /usr/local/lib/android/sdk/licenses/android-sdk-arm64-v8a-license
-          
-          # Method 2: Use yes with timeout to avoid broken pipe
-          sleep 2
-          yes | timeout 30 sdkmanager --licenses || echo "License acceptance completed or timed out"
-
-      - name: Install Android components
-        run: |
-          echo "=== Installing Android components ==="
-          
-          # Install basic components first
-          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
-          
-          # Let Buildozer auto-select NDK version
-          echo "Installing recommended NDK version"
-          sdkmanager "ndk;25.1.8937393" || echo "NDK installation completed"
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
 
       - name: Build with Buildozer
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          # Clean previous builds
-          buildozer android clean || true
-          
-          # Build the APK
           buildozer -v android debug
-          
-          # Check if APK was created
-          if ls bin/*.apk 1>/dev/null 2>&1; then
-            echo "🎉 APK built successfully!"
-            ls -la bin/
-          else
-            echo "❌ APK build failed"
-            exit 1
-          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: BakeryCalculator-APK
+          name: package
           path: bin/*.apk
-          retention-days: 7
-
-      - name: Upload build logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Build-Logs
-          path: .buildozer/logs/*
-          retention-days: 3
+          
