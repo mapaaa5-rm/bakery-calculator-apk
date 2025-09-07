@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    # Використовувати стабільне середовище Ubuntu 22.04 замість останнього
+    # Використовуємо стабільне середовище Ubuntu 22.04
     runs-on: ubuntu-22.04
 
     steps:
@@ -29,23 +29,7 @@ jobs:
       - name: Install Buildozer and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-              python3-pip \
-              build-essential \
-              git \
-              python3-dev \
-              autoconf \
-              automake \
-              libtool \
-              libsdl2-dev \
-              libsdl2-image-dev \
-              libsdl2-mixer-dev \
-              libsdl2-ttf-dev \
-              libportmidi-dev \
-              libswscale-dev \
-              libavformat-dev \
-              libavcodec-dev \
-              zlib1g-dev
+          sudo apt-get install -y autoconf automake libtool
           pip install "cython<3.0" buildozer
 
       - name: Build with Buildozer
