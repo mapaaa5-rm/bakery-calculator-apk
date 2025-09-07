@@ -6,7 +6,6 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
 requirements = python3,kivy==2.1.0
-# Додано для використання стабільної гілки python-for-android
 p4a.branch = master
 
 # Android settings
@@ -19,8 +18,7 @@ orientation = portrait
 fullscreen = 0
 android.permissions = INTERNET
 
-# Build optimization
-android.skip_update = True
+# Build configuration
 android.accept_sdk_license = True
 
 [buildozer]
